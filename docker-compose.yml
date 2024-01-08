@@ -1,0 +1,35 @@
+    version: '3.9'
+    services:
+        search:
+            container_name: search_service
+            build:
+                context: .
+                dockerfile: Dockerfile
+                args:
+                    buildno: 1
+            ports:
+                - "5000:5000"
+            volumes:
+                - .:/app
+        s2t-consumer:
+            container_name: transcribe_service
+            build:
+                context: .
+                dockerfile: DockerfileTranscribeService
+                args:
+                    buildno: 1
+            command: celery -A transcribe_service.celery_app worker -l INFO --pool=prefork --concurrency=2 -E -n consumer@vidoso.com -Q pipeline_1  #-f %n-%i.log
+            depends_on:
+                - search
+                - redis
+            volumes:
+                - .:/app
+                - ./videos:/app/videos
+                - ./audio:/app/audio
+        redis:
+            image: redis:latest
+            container_name: redis_service
+            ports:
+                - "6379:6379"
+            expose:
+                - 6379

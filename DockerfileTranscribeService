@@ -1,0 +1,11 @@
+FROM ubuntu:22.04 as build
+
+RUN apt-get update && apt-get install -y ffmpeg python3-pip flac
+
+RUN pip install celery==5.3.5 redis requests SpeechRecognition moviepy deepmultilingualpunctuation
+
+WORKDIR /app
+
+COPY . .
+
+ENV PYTHONPATH "${PYTHONPATH}:/app"
