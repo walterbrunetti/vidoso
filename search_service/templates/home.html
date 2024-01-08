@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            .styled-table {
+                border-collapse: collapse;
+                margin: 25px 0;
+                font-size: 0.9em;
+                font-family: sans-serif;
+                min-width: 400px;
+                box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+            }
+            .styled-table thead tr {
+                background-color: #009879;
+                color: #ffffff;
+                text-align: left;
+            }
+            .styled-table th,
+            .styled-table td {
+                padding: 12px 15px;
+            }
+            .styled-table tbody tr {
+                border-bottom: 1px solid #dddddd;
+            }
+
+            .styled-table tbody tr:nth-of-type(even) {
+                background-color: #f3f3f3;
+            }
+
+            .styled-table tbody tr:last-of-type {
+                border-bottom: 2px solid #009879;
+            }
+
+            .filter {
+                cursor: pointer;
+            }
+
+        </style>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+        <script>
+            function getVideos(query, k){
+                $.get( "/search", {"q": query, "k": k,}).done(function( data ) {
+
+                    if (!data.success){
+                        alert(data.message);
+                        return False
+                    }
+                    var table = $('#videos tbody');
+                    $("#videos tbody tr").remove();
+                    $.each(data.results, function(indexRow,row){
+                        var tableRow = "<td>" + row.id + "</td>";
+                        tableRow = tableRow + "<td>" + row.sentence + "</td>";
+                        tableRow = tableRow + "<td>" + row.title + "</td>";
+                        tableRow = tableRow + "<td>" + row.transcription + "</td>";
+                        table.append('<tr>' + tableRow + '</tr>');
+                    })
+                });
+            }
+
+            $(document).ready(function(){
+
+                $("#search_videos_form").on( "submit", function( event ) {
+                    let query = $('form input[name=query]').val();
+                    let k = $('form input[name=k]').val();
+                    getVideos(query, k);
+                    event.preventDefault();
+                });
+
+            });
+        </script>
+    </head>
+
+    <body>
+
+        <h2>Vidoso - Search videos</h2>
+
+        <h3>Videos</h3>
+        <form action="search" id="search_videos_form">
+            <input type="text" placeholder="Enter query" name="query" required>
+            <input type="text" placeholder="Enter K results" name="k" value="4">
+            <input type="submit" value="Search">
+        </form>
+        <table id="videos" class="styled-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Sentence</th>
+                    <th>Video Title</th>
+                    <th>Transcription</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </body>
+</html>
+
