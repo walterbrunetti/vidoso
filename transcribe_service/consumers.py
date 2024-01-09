@@ -1,8 +1,8 @@
 import celery
 from celery.utils.log import get_task_logger
+from requests import Session
 import moviepy.editor as mp
 import speech_recognition as sr
-from requests import Session
 from deepmultilingualpunctuation import PunctuationModel
 
 from transcribe_service.celery_app import celery_app
@@ -12,6 +12,11 @@ logger = get_task_logger(__name__)
 
 
 class BaseTask(celery.Task):
+    max_retries = 3
+    retry_backoff = True
+    retry_backoff_max = 700
+    retry_jitter = False
+
     _session = None
     _punctuation_model = None
 
@@ -33,75 +38,82 @@ class BaseTask(celery.Task):
 
 
 @celery_app.task(bind=True, base=BaseTask)
-def speech_to_text(self, video_file_name):
+def extract_audio_task(self, video_file_name):
     """
     Task will raise a ValueError if max retries is reached.
     """
-    # try:
-    #     hit_other_service()
-    #     # test failure scenarios
-    #     if random.uniform(1, 5) <= 3:
-    #         raise ValueError("damn it")
-    # except ValueError as exc:
-    #     logger.warning("Something wrong happened")
-    #     raise self.retry(exc=exc)
-
-    # try:
-    #
-    # except sr.UnknownValueError:
-    #     print("Could not understand audio")
-    #
-    # except sr.RequestError as e:
-    #     print("Could not request results. check your internet connection")
-
-
     logger.info(f'Received and processed: {video_file_name}')
-
-    video = mp.VideoFileClip(f'videos/{video_file_name}')
-
-    audio_file = video.audio
-    audio_file.write_audiofile(f"audio/{video_file_name}.flac", codec="flac")
-
-    return True
-
-
-@celery_app.task(bind=True, base=BaseTask)
-def speech_to_text_2(self, step_1_success, video_file_name):
-    print(f'STEP 222 {video_file_name}')
-    r = sr.Recognizer()
-
-    with sr.AudioFile(f"audio/{video_file_name}.flac") as source:
-        data = r.record(source)
-
-    # Convert speech to text
-    text = r.recognize_google(data)
-
-    logger.info(f'TEXT FILE {video_file_name}: {text}')
-
-    return text
+    try:
+        video = mp.VideoFileClip(f'videos/{video_file_name}')
+        audio_file = video.audio
+        audio_file.write_audiofile(f"audio/{video_file_name}.flac", codec="flac")
+        return True
+    except Exception as e:
+        raise self.retry(exc=e)
 
 
 @celery_app.task(bind=True, base=BaseTask)
-def speech_to_text_3(self, text, video_file_name):
-    print(f'STEP 333 {video_file_name} {text}')
+def convert_speech_to_text_task(self, step_1_success, video_file_name):
+    """Convert audio file into text (transcription)"""
+    try:
+        r = sr.Recognizer()
 
-    result = self.punctuation_model.restore_punctuation(text)
-    logger.info(f'PUNCTUATION {video_file_name}: {result}')
+        with sr.AudioFile(f"audio/{video_file_name}.flac") as source:
+            data = r.record(source)
 
+        # Convert speech to text
+        text = r.recognize_google(data)
+        logger.info(f'TEXT FILE {video_file_name}: {text}')
+        return text
+    except sr.UnknownValueError:
+        print("Could not understand audio")
+        raise
+    except sr.RequestError as e:
+        print("Could not request results. check your internet connection")
+        raise self.retry(exc=e)
+
+
+@celery_app.task(bind=True, base=BaseTask, default_retry_delay=10)
+def add_transcript_punctuation_task(self, text, video_file_name):
+    """
+    Add punctuation to transcription
+    """
+    try:
+        result = self.punctuation_model.restore_punctuation(text)
+        logger.info(f'PUNCTUATION {video_file_name}: {result}')
+        return result
+    except Exception as e:
+        raise self.retry(exc=e)
+
+
+@celery_app.task(bind=True, base=BaseTask)
+def add_video_transcript_task(self, text, video_file_name):
+    """
+    Add video with transcription into the search system
+    """
+    logger.info(f'STEP 333 {video_file_name} {text}')
     url = f"http://search_service:5000/add_video"
-    data = {"transcript": result, "file_name": video_file_name}
-    response = self.session.post(url, data=data)
 
-    logger.info(response)
+    try:
+        data = {"transcript": text, "file_name": video_file_name}
+        response = self.session.post(url, data=data)
+        logger.info(response)
+    except Exception as e:
+        raise self.retry(exc=e)
 
     return True
 
 
 @celery_app.task(bind=True, base=BaseTask)
-def transcribing_videos_is_done(self, results):
+def transcribing_videos_is_done_task(self, results):
+    """
+    Let Search Service know transcribing videos is done.
+    This task will be executed once speech to text process is done for all videos.
+    """
     url = f"http://search_service:5000/load_index"
-    response = self.session.post(url, json={})
-
-    logger.info(response)
-
-    return True
+    try:
+        response = self.session.post(url, json={})
+        logger.info(response)
+        return True
+    except Exception as e:
+        raise self.retry(exc=e)

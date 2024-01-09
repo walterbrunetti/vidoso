@@ -1,8 +1,12 @@
-from celery import Celery, group, chord, chain
+from celery import Celery, chord, chain
 import requests
 
-
-from transcribe_service.consumers import speech_to_text, speech_to_text_2, speech_to_text_3, transcribing_videos_is_done
+from transcribe_service.consumers import \
+    extract_audio_task, \
+    convert_speech_to_text_task, \
+    add_transcript_punctuation_task, \
+    add_video_transcript_task, \
+    transcribing_videos_is_done_task
 
 celery_app = Celery('app_name', broker='redis://redis_service')
 
@@ -18,15 +22,19 @@ def produce_transcribe_messages():
         print('No new files to process')
         return
 
-    #header = group(speech_to_text.s(file) for file in files)()
-    header = [chain(speech_to_text.s(file), speech_to_text_2.s(file), speech_to_text_3.s(file)) for file in files]
-
-    result = chord(header)(transcribing_videos_is_done.s())
+    header = [
+        chain(
+            extract_audio_task.s(file),
+            convert_speech_to_text_task.s(file),
+            add_transcript_punctuation_task(file),
+            add_video_transcript_task.s(file)
+        )
+        for file in files
+    ]
+    result = chord(header)(transcribing_videos_is_done_task.s())
     result.get()
 
-
-    #for file in files:
-    #    celery_app.send_task('transcribe_service.consumers.speech_to_text', args=[file], kwargs={}, queue='pipeline_1')
+    print('Process was executed successfully')
 
 
 if __name__ == '__main__':

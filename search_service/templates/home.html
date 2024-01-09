@@ -30,10 +30,32 @@
             .styled-table tbody tr:last-of-type {
                 border-bottom: 2px solid #009879;
             }
-
-            .filter {
-                cursor: pointer;
+            #loading-bar-spinner.spinner {
+                left: 20%;
+                margin-left: -20px;
+                top: 20%;
+                margin-top: -20px;
+                position: absolute;
+                z-index: 19 !important;
+                animation: loading-bar-spinner 400ms linear infinite;
+                display: none;
             }
+
+            #loading-bar-spinner.spinner .spinner-icon {
+                width: 40px;
+                height: 40px;
+                border:  solid 4px transparent;
+                border-top-color:  #00C8B1 !important;
+                border-left-color: #00C8B1 !important;
+                border-radius: 50%;
+            }
+
+            @keyframes loading-bar-spinner {
+              0%   { transform: rotate(0deg);   transform: rotate(0deg); }
+              100% { transform: rotate(360deg); transform: rotate(360deg); }
+            }
+
+
 
         </style>
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
@@ -48,18 +70,25 @@
                     var table = $('#videos tbody');
                     $("#videos tbody tr").remove();
                     $.each(data.results, function(indexRow,row){
-                        var tableRow = "<td>" + row.id + "</td>";
+                        var tableRow = "<td>" + (indexRow + 1) + "</td>";
                         tableRow = tableRow + "<td>" + row.sentence + "</td>";
+                        tableRow = tableRow + "<td>" + row.id + "</td>";
                         tableRow = tableRow + "<td>" + row.title + "</td>";
                         tableRow = tableRow + "<td>" + row.transcription + "</td>";
                         table.append('<tr>' + tableRow + '</tr>');
                     })
+
+                    var $loadingGif = $('#loading-bar-spinner');
+                    $loadingGif.hide();
                 });
             }
 
             $(document).ready(function(){
 
                 $("#search_videos_form").on( "submit", function( event ) {
+                    var $loadingGif = $('#loading-bar-spinner');
+                    $loadingGif.show();
+
                     let query = $('form input[name=query]').val();
                     let k = $('form input[name=k]').val();
                     getVideos(query, k);
@@ -72,21 +101,23 @@
 
     <body>
 
-        <h2>Vidoso - Search videos</h2>
+        <h2>Vidoso - Search sentences</h2>
 
-        <h3>Videos</h3>
         <form action="search" id="search_videos_form">
-            <input type="text" placeholder="Enter query" name="query" required>
-            <input type="text" placeholder="Enter K results" name="k" value="4">
+            <input type="text" placeholder="Enter query" name="query" required style="width: 350px">
+            <input type="text" placeholder="K" name="k" value="4" style="width: 50px">
             <input type="submit" value="Search">
+            <div id="loading-bar-spinner" class="spinner"><div class="spinner-icon"></div></div>
         </form>
+        <h3>Results</h3>
         <table id="videos" class="styled-table">
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>#</th>
                     <th>Sentence</th>
-                    <th>Video Title</th>
-                    <th>Transcription</th>
+                    <th>Video ID</th>
+                    <th>Title</th>
+                    <th>Full Transcription</th>
                 </tr>
             </thead>
             <tbody>
