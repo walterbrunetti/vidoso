@@ -54,16 +54,14 @@
               0%   { transform: rotate(0deg);   transform: rotate(0deg); }
               100% { transform: rotate(360deg); transform: rotate(360deg); }
             }
-
-
-
         </style>
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
         <script>
             function getVideos(query, k){
                 $.get( "/search", {"q": query, "k": k,}).done(function( data ) {
-
+                    var $loadingGif = $('#loading-bar-spinner');
                     if (!data.success){
+                        $loadingGif.hide();
                         alert(data.message);
                         return False
                     }
@@ -78,7 +76,7 @@
                         table.append('<tr>' + tableRow + '</tr>');
                     })
 
-                    var $loadingGif = $('#loading-bar-spinner');
+
                     $loadingGif.hide();
                 });
             }
