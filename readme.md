@@ -18,7 +18,7 @@
 
 Restarting the app will force an index update. All videos successfully transcribed will be indexed.
 
-- URLs update
+- URLs update (and ports)
 
 
 ### Limitations

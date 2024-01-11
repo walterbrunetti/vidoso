@@ -1,55 +1,12 @@
 from os import walk
+
 from flask import Flask, render_template, request
 from config import Config
-import faiss
-from sentence_transformers import SentenceTransformer
-from flask_sqlalchemy import SQLAlchemy
-import numpy as np
+from extensions import db
+from models import Video
 
-db = SQLAlchemy()
-
-
-class Video(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String, nullable=False)
-    transcription = db.Column(db.String)
-    file_name = db.Column(db.String, unique=True)
-
-    def __repr__(self):
-        return f'{self.id} - {self.title}'
-
-
-
-
-def _build_faiss_index():
-    """Build Faiss index"""
-    videos = db.session.execute(db.select(Video))
-
-    sentences = []
-    ids = []
-    videos_sentences_id = []
-    index = 0
-    for row in videos:
-        transcription = row.Video.transcription
-        trans_sentences = transcription.split('.')
-        for sentence in trans_sentences:
-            sentences.append(sentence)
-            ids.append(index)
-            videos_sentences_id.append(row.Video.id)
-            index += 1
-
-    if not sentences:
-        return None, None, None
-
-    model = SentenceTransformer('bert-base-nli-mean-tokens')
-    sentence_embeddings = model.encode(sentences)
-
-    d = sentence_embeddings.shape[1]
-    index = faiss.IndexFlatL2(d)
-    index2 = faiss.IndexIDMap(index)
-    index2.add_with_ids(sentence_embeddings, np.array(ids))
-
-    return index2, sentences, videos_sentences_id
+from faiss_index import build_faiss_index, generate_sentence_embedding
+from search_engine import text_search, hybrid_search
 
 
 def create_app(config_class=Config):
@@ -59,7 +16,7 @@ def create_app(config_class=Config):
     db.init_app(app)
     with app.app_context():
         db.create_all()
-        app.index, app.sentences, app.videos_sentences_id = _build_faiss_index()
+        app.index, app.sentences, app.videos_sentences_id = build_faiss_index()
 
     @app.route('/')
     def home():
@@ -68,7 +25,7 @@ def create_app(config_class=Config):
     @app.route('/get_video_files', methods=['GET'])
     def get_video_files():
         """
-        Get and return video files that were not processed.
+        Get and return video files that were not processed yet.
         """
         filenames = next(walk("videos"), (None, None, []))[2]
         files = {file for file in filenames if file.endswith('.mp4')}
@@ -84,30 +41,33 @@ def create_app(config_class=Config):
     def search():
         q = request.args.get('q')
         k = request.args.get('k', 5)
+        k = int(k)
         if not q:
             return {"success": False, "message": "Q is missing"}
 
         if app.index is None:
             return {"success": False, "message": "Index is not ready"}
 
-        sentences = app.sentences
-        videos_sentences_id = app.videos_sentences_id
+        xq = generate_sentence_embedding(q)
+        D, I = app.index.search(xq, k)  # vector search
+        text_search_ids = text_search(q, k)
 
-        model = SentenceTransformer('bert-base-nli-mean-tokens')
-        xq = model.encode([q])
-        D, I = app.index.search(xq, int(k))  # search
+        ranked_sentences, ranked_video_ids = hybrid_search(
+            vector_result_ids=I[0],
+            text_result_ids=text_search_ids,
+            q=q, app_sentences=app.sentences,
+            app_videos_sentences_id=app.videos_sentences_id)
 
         results = []
-        for i in range(int(k)):
-            sentence_id = int(I[0][i])
-            video_id = videos_sentences_id[sentence_id]
+        for i in range(k):
+            video_id = ranked_video_ids[i]
             video = db.session.execute(db.select(Video).filter(Video.id==video_id)).first()
 
             data = {
                 'transcription': video.Video.transcription,
                 'id': video.Video.id,
                 'title': video.Video.title,
-                'sentence': sentences[sentence_id]
+                'sentence': ranked_sentences[i]
             }
             results.append(data)
 
@@ -135,7 +95,7 @@ def create_app(config_class=Config):
 
     @app.route('/load_index', methods=['POST'])
     def load_index():
-        app.index, app.sentences, app.videos_sentences_id = _build_faiss_index()
+        app.index, app.sentences, app.videos_sentences_id = build_faiss_index()
         return {'success': True}
 
     @app.route('/healthcheck/')
