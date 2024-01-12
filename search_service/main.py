@@ -98,10 +98,6 @@ def create_app(config_class=Config):
         app.index, app.sentences, app.videos_sentences_id = build_faiss_index()
         return {'success': True}
 
-    @app.route('/healthcheck/')
-    def health_check():
-        return {'success': True}
-
     return app
 
 if __name__ == "__main__":

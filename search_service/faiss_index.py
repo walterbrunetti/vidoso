@@ -47,7 +47,7 @@ def _get_sentences_data():
     return sentences, videos_sentences_id, ids
 
 
-def generate_sentence_embedding(q):
+def generate_sentence_embedding(q: str):
     model = SentenceTransformer(MODEL)
     xq = model.encode([q])
     return xq
